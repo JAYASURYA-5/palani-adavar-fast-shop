@@ -334,8 +334,6 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     language: 'English',
     autoPrintReceipt: true
   },
-  updateSettings: (newSettings) => set((state) => ({ settings: { ...state.settings, ...newSettings } })),
-  
   // Menu
   menu: INITIAL_MENU,
   addMenuItem: (item) => set((state) => {
