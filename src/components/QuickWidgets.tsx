@@ -79,12 +79,14 @@ export const QuickWidgets: React.FC<QuickWidgetsProps> = ({
       return `${base} col-span-1 bg-gradient-to-br from-brand-500 to-primary-500 text-white shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40 hover:from-brand-600 hover:to-primary-600`;
     }
     if (isOperator) {
-      return `${base} bg-brand-50/60 dark:bg-brand-950/20 text-brand-600 dark:text-brand-400 hover:bg-brand-100/70 dark:hover:bg-brand-950/40 ring-1 ring-brand-500/15`;
+      // Vivid orange-amber so operators pop on dark background
+      return `${base} bg-amber-500 hover:bg-amber-400 text-white shadow-md shadow-amber-500/30`;
     }
     if (isClear) {
-      return `${base} bg-rose-50/70 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 hover:bg-rose-100/70 dark:hover:bg-rose-950/40`;
+      // Bright rose for clear/backspace — clearly distinct
+      return `${base} bg-rose-500 hover:bg-rose-400 text-white shadow-md shadow-rose-500/30`;
     }
-    return `${base} bg-slate-100/70 dark:bg-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700/60`;
+    return `${base} bg-slate-700/70 dark:bg-slate-700/60 text-white hover:bg-slate-600/80 dark:hover:bg-slate-600/70`;
   };
 
   const buttons = ['C', '÷', '×', '⌫', '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '=', '0', '.'];

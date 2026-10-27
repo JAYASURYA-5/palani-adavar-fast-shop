@@ -289,7 +289,7 @@ export const Header: React.FC<HeaderProps> = ({ setIsMobileOpen, toggleCalculato
                       className={`p-3 rounded-xl cursor-pointer transition-all flex gap-2.5 group ${
                         item.isRead 
                           ? 'hover:bg-slate-100/60 dark:hover:bg-darkBorder/30' 
-                          : 'bg-brand-50/60 dark:bg-brand-950/12 hover:bg-brand-50 dark:hover:bg-brand-950/20 ring-1 ring-brand-500/10'
+                          : 'bg-brand-50/80 dark:bg-brand-900/20 hover:bg-brand-100/70 dark:hover:bg-brand-900/30 ring-1 ring-brand-500/20'
                       }`}
                     >
                       {/* Phase 10: Type icon */}
@@ -297,14 +297,18 @@ export const Header: React.FC<HeaderProps> = ({ setIsMobileOpen, toggleCalculato
 
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start gap-2 mb-0.5">
-                          <span className={`font-bold text-xs truncate ${item.isRead ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>
+                          <span className={`font-bold text-xs truncate ${
+                            item.isRead 
+                              ? 'text-slate-600 dark:text-slate-200' 
+                              : 'text-slate-900 dark:text-white'
+                          }`}>
                             {item.title}
                           </span>
-                          <span className="text-[9px] text-slate-400 whitespace-nowrap flex-shrink-0">
+                          <span className="text-[9px] text-slate-400 dark:text-slate-400 whitespace-nowrap flex-shrink-0">
                             {relativeTime(item.timestamp)}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                        <p className="text-[10px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
                           {item.message}
                         </p>
                       </div>

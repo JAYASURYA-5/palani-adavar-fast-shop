@@ -1,4 +1,21 @@
 import { create } from 'zustand';
+import {
+  saveOrder,
+  updateOrder,
+  saveExpense,
+  deleteExpenseFromDB,
+  saveInventoryItem,
+  saveInventoryLog,
+  saveSupplier,
+  saveCustomer,
+  saveEmployee,
+  saveMenuItem,
+  deleteMenuItemFromDB,
+  saveNotification,
+  markNotificationReadInDB,
+  clearAllNotificationsInDB,
+  saveSettings,
+} from '../firebase/firestoreService';
 
 // Types
 export interface MenuItem {
@@ -266,10 +283,29 @@ const INITIAL_ORDERS: Order[] = [];
 
 const INITIAL_NOTIFICATIONS: Notification[] = [];
 
+// One-time session flag set by the landing page login.
+// Read synchronously here so currentUser is set BEFORE the first render.
+// The key is deleted immediately after reading, so any page refresh returns null.
+const restoreAdminSession = (): Employee | null => {
+  try {
+    const raw = sessionStorage.getItem('palani_admin_session');
+    if (!raw) return null;
+    sessionStorage.removeItem('palani_admin_session'); // consume once — refresh clears auth
+    const { name } = JSON.parse(raw) as { name: string };
+    return INITIAL_EMPLOYEES.find((e) => e.name === name) ?? null;
+  } catch {
+    return null;
+  }
+};
+
 export const useRestaurantStore = create<RestaurantState>((set, get) => ({
-  // Authentication
-  currentUser: INITIAL_EMPLOYEES[0], // Preloaded as Owner
-  setCurrentUser: (user) => set({ currentUser: user }),
+  // Authentication — null on every fresh load; only set via the landing-page one-time flag
+  currentUser: restoreAdminSession(),
+  setCurrentUser: (user) => {
+    // No storage persistence — auth lives in memory only.
+    // Refreshing the page always returns to the landing page.
+    set({ currentUser: user });
+  },
   
   // Theme
   isDarkMode: true, // Default to dark mode for premium feel
@@ -304,17 +340,25 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   menu: INITIAL_MENU,
   addMenuItem: (item) => set((state) => {
     const newItem = { ...item, id: `m-${Date.now()}` };
+    saveMenuItem(newItem).catch(console.error);
     return { menu: [...state.menu, newItem] };
   }),
-  updateMenuItem: (id, updatedFields) => set((state) => ({
-    menu: state.menu.map((item) => item.id === id ? { ...item, ...updatedFields } : item)
-  })),
-  deleteMenuItem: (id) => set((state) => ({
-    menu: state.menu.filter((item) => item.id !== id)
-  })),
-  toggleFavorite: (id) => set((state) => ({
-    menu: state.menu.map((item) => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item)
-  })),
+  updateMenuItem: (id, updatedFields) => set((state) => {
+    const updatedMenu = state.menu.map((item) => item.id === id ? { ...item, ...updatedFields } : item);
+    const updatedItem = updatedMenu.find(i => i.id === id);
+    if (updatedItem) saveMenuItem(updatedItem).catch(console.error);
+    return { menu: updatedMenu };
+  }),
+  deleteMenuItem: (id) => set((state) => {
+    deleteMenuItemFromDB(id).catch(console.error);
+    return { menu: state.menu.filter((item) => item.id !== id) };
+  }),
+  toggleFavorite: (id) => set((state) => {
+    const updatedMenu = state.menu.map((item) => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item);
+    const updatedItem = updatedMenu.find(i => i.id === id);
+    if (updatedItem) saveMenuItem(updatedItem).catch(console.error);
+    return { menu: updatedMenu };
+  }),
   
   // Cart
   cart: [],
@@ -439,6 +483,9 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     // Add Notification
     state.addNotification('new_order', 'New Order Placed', `Order ${orderId} placed for ₹${grandTotal.toFixed(0)}.`);
     
+    // Persist to Firestore
+    saveOrder(newOrder).catch(console.error);
+
     set((state) => ({
       orders: [newOrder, ...state.orders],
       cart: [] // Clear shopping cart
@@ -457,28 +504,34 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
       }
       return order;
     });
+    // Persist status change to Firestore
+    updateOrder(id, { status }).catch(console.error);
     return { orders: updatedOrders };
   }),
   // Phase 13: Void order with reason
-  voidOrder: (id, reason) => set((state) => ({
-    orders: state.orders.map(order => {
+  voidOrder: (id, reason) => set((state) => {
+    const updatedOrders = state.orders.map(order => {
       if (order.id === id) {
         state.addNotification('report', 'Order Voided', `Order ${id} was voided. Reason: ${reason}`);
         return { ...order, status: 'Cancelled' as const, cancellationReason: reason };
       }
       return order;
-    })
-  })),
+    });
+    updateOrder(id, { status: 'Cancelled', cancellationReason: reason }).catch(console.error);
+    return { orders: updatedOrders };
+  }),
   // Phase 13: Refund order
-  refundOrder: (id) => set((state) => ({
-    orders: state.orders.map(order => {
+  refundOrder: (id) => set((state) => {
+    const updatedOrders = state.orders.map(order => {
       if (order.id === id) {
         state.addNotification('payment', 'Order Refunded', `Order ${id} has been marked as Refunded.`);
         return { ...order, paymentStatus: 'Refunded' as const, refundStatus: 'Refunded' as const };
       }
       return order;
-    })
-  })),
+    });
+    updateOrder(id, { paymentStatus: 'Refunded', refundStatus: 'Refunded' }).catch(console.error);
+    return { orders: updatedOrders };
+  }),
   incrementOrderTimers: () => set((state) => ({
     orders: state.orders.map((order) => {
       if (order.status !== 'Delivered' && order.status !== 'Cancelled') {
@@ -522,11 +575,15 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     
     state.addNotification('expense', 'Expense Added', `Expense category "${expense.category}" of ₹${expense.amount} registered.`);
     
+    // Persist to Firestore
+    saveExpense(newExpense).catch(console.error);
+
     return { expenses: [newExpense, ...state.expenses] };
   }),
-  deleteExpense: (id) => set((state) => ({
-    expenses: state.expenses.filter((e) => e.id !== id)
-  })),
+  deleteExpense: (id) => set((state) => {
+    deleteExpenseFromDB(id).catch(console.error);
+    return { expenses: state.expenses.filter((e) => e.id !== id) };
+  }),
   
   // Inventory
   inventory: INITIAL_INVENTORY,
@@ -543,12 +600,15 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
           state.addNotification('low_stock', 'Low Stock Warning', `${item.name} is running low (Remaining: ${remaining.toFixed(1)} ${item.unit}).`);
         }
         
-        return {
+        const updatedItem = {
           ...item,
           purchased: item.purchased + purchasedDiff,
           used: item.used + usedDiff,
           remaining
         };
+        // Persist inventory item to Firestore
+        saveInventoryItem(updatedItem).catch(console.error);
+        return updatedItem;
       }
       return item;
     });
@@ -563,6 +623,8 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
       date: new Date().toISOString(),
       notes
     };
+    // Persist log to Firestore
+    saveInventoryLog(newLog).catch(console.error);
     
     return {
       inventory: updatedInventory,
@@ -572,37 +634,50 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   
   // Suppliers
   suppliers: INITIAL_SUPPLIERS,
-  addSupplier: (supplier) => set((state) => ({
-    suppliers: [...state.suppliers, { ...supplier, id: `s-${Date.now()}` }]
-  })),
-  updateSupplierOutstanding: (id, amount) => set((state) => ({
-    suppliers: state.suppliers.map(s => s.id === id ? { ...s, outstandingBalance: Math.max(0, s.outstandingBalance + amount) } : s)
-  })),
+  addSupplier: (supplier) => set((state) => {
+    const newSupplier = { ...supplier, id: `s-${Date.now()}` };
+    saveSupplier(newSupplier).catch(console.error);
+    return { suppliers: [...state.suppliers, newSupplier] };
+  }),
+  updateSupplierOutstanding: (id, amount) => set((state) => {
+    const updatedSuppliers = state.suppliers.map(s => s.id === id ? { ...s, outstandingBalance: Math.max(0, s.outstandingBalance + amount) } : s);
+    const updated = updatedSuppliers.find(s => s.id === id);
+    if (updated) saveSupplier(updated).catch(console.error);
+    return { suppliers: updatedSuppliers };
+  }),
   
   // Customers
   customers: INITIAL_CUSTOMERS,
-  addCustomer: (customer) => set((state) => ({
-    customers: [...state.customers, {
+  addCustomer: (customer) => set((state) => {
+    const newCustomer = {
       ...customer,
       id: `c-${Date.now()}`,
       visitCount: 1,
       totalSpent: 0,
       loyaltyPoints: 0,
       lastVisitDate: new Date().toISOString().split('T')[0]
-    }]
-  })),
-  addLoyaltyPoints: (phone, amountSpent) => set((state) => ({
-    customers: state.customers.map(c => c.phone === phone ? {
+    };
+    saveCustomer(newCustomer).catch(console.error);
+    return { customers: [...state.customers, newCustomer] };
+  }),
+  addLoyaltyPoints: (phone, amountSpent) => set((state) => {
+    const updatedCustomers = state.customers.map(c => c.phone === phone ? {
       ...c,
       loyaltyPoints: c.loyaltyPoints + Math.floor(amountSpent / 10)
-    } : c)
-  })),
+    } : c);
+    const updated = updatedCustomers.find(c => c.phone === phone);
+    if (updated) saveCustomer(updated).catch(console.error);
+    return { customers: updatedCustomers };
+  }),
   
   // Employees
   employees: INITIAL_EMPLOYEES,
-  updateEmployeeAttendance: (id, attendanceStatus) => set((state) => ({
-    employees: state.employees.map(emp => emp.id === id ? { ...emp, attendanceStatus } : emp)
-  })),
+  updateEmployeeAttendance: (id, attendanceStatus) => set((state) => {
+    const updatedEmployees = state.employees.map(emp => emp.id === id ? { ...emp, attendanceStatus } : emp);
+    const updated = updatedEmployees.find(e => e.id === id);
+    if (updated) saveEmployee(updated).catch(console.error);
+    return { employees: updatedEmployees };
+  }),
   
   // Notifications
   notifications: INITIAL_NOTIFICATIONS,
@@ -615,13 +690,29 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
       timestamp: new Date().toISOString(),
       isRead: false
     };
+    saveNotification(newNotification).catch(console.error);
     return { notifications: [newNotification, ...state.notifications] };
   }),
-  markNotificationAsRead: (id) => set((state) => ({
-    notifications: state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n)
-  })),
-  markAllNotificationsAsRead: () => set((state) => ({
-    notifications: state.notifications.map(n => ({ ...n, isRead: true }))
-  })),
-  clearNotifications: () => set({ notifications: [] })
+  markNotificationAsRead: (id) => set((state) => {
+    markNotificationReadInDB(id).catch(console.error);
+    return { notifications: state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n) };
+  }),
+  markAllNotificationsAsRead: () => set((state) => {
+    // Update each notification in Firestore
+    state.notifications.forEach(n => {
+      if (!n.isRead) markNotificationReadInDB(n.id).catch(console.error);
+    });
+    return { notifications: state.notifications.map(n => ({ ...n, isRead: true })) };
+  }),
+  clearNotifications: () => {
+    clearAllNotificationsInDB().catch(console.error);
+    set({ notifications: [] });
+  },
+
+  // Override updateSettings to also persist to Firestore
+  updateSettings: (newSettings) => set((state) => {
+    const merged = { ...state.settings, ...newSettings };
+    saveSettings(merged).catch(console.error);
+    return { settings: merged };
+  }),
 }));

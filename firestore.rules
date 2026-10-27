@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// Palani Andavar Fast Food — Firestore Security Rules
+// This app is a private POS system. Allow all reads & writes from the app.
+// For production hardening, restrict by auth.uid after enabling Firebase Auth.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

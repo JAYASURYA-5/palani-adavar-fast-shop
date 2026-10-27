@@ -88,8 +88,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    navigate('/login');
+    setCurrentUser(null); // also clears localStorage via the store's setCurrentUser
+    // Redirect to landing page (outside React router — full page navigation)
+    window.location.replace('/landing/index.html');
   };
 
   const renderSidebarContent = () => (
